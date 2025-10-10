@@ -206,3 +206,15 @@
 html {
   font-size: var(--font-size);
 }
+
+/* --- CRITICAL FINAL TOAST COLOR FIX --- */
+
+/* This rule targets the last two likely elements that hold the text and forces the dark color. */
+.toaster *[data-description], 
+.toaster div[data-description],
+.toaster .sonner-description, 
+.toaster > div > div:nth-last-child(1) {
+  color: var(--foreground) !important;
+  opacity: 1 !important;
+  /* Use !important on color and opacity to override ALL competing styles */
+}

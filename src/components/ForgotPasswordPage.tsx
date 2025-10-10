@@ -40,9 +40,7 @@ export const ForgotPasswordPage = () => {
         // Send password reset email directly through Firebase
         await sendPasswordResetEmail(auth, email);
         
-        toast.success('Password Reset Email Sent!', {
-            description: `A link has been sent to ${email}. Please check your inbox.`
-        });
+        toast.success(`Password Reset Link sent to ${email}!`);
         
         setStep(4); // Jump directly to the success page (Step 4)
         

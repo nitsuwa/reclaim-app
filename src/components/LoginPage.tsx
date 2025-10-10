@@ -8,23 +8,24 @@ import { Eye, EyeOff, AlertCircle } from 'lucide-react';
 import { PLVLogo } from './PLVLogo';
 import { toast } from 'sonner@2.0.3';
 import { Alert, AlertDescription } from './ui/alert';
+
+// --- ADDED FIREBASE IMPORTS ---
 import { auth } from '../firebase'; 
 import { db } from '../firebase'; 
 import { signInWithEmailAndPassword } from 'firebase/auth'; 
-import { doc, getDoc } from 'firebase/firestore'; 
+import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
+// ----------------------------
 
 export const LoginPage = () => {
   const { setCurrentUser, setCurrentPage } = useApp();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [isAdmin, setIsAdmin] = useState(false);
+  // Removed: [isAdmin, setIsAdmin] state
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loginAttempts, setLoginAttempts] = useState(0);
   const [isLocked, setIsLocked] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-
-// src/components/LoginPage.tsx (Replace the existing handleLogin function)
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,36 +44,63 @@ export const LoginPage = () => {
     setIsLoading(true);
 
     try {
-      // 1. Authenticate with Firebase Auth
+      let emailToLogin = '';
+      let userDetails: any = null;
+
+      // 1. Determine if input is Email or Student ID
+      if (/@plv\.edu\.ph$/.test(username)) {
+        emailToLogin = username;
+      } 
+      // 2. If it's a Student ID (XX-XXXX format), query Firestore for email
+      else if (/^\d{2}-\d{4}$/.test(username)) {
+        const usersRef = collection(db, 'users');
+        const q = query(usersRef, where('studentId', '==', username));
+        const querySnapshot = await getDocs(q);
+
+        if (!querySnapshot.empty) {
+          const doc = querySnapshot.docs[0];
+          userDetails = doc.data();
+          emailToLogin = userDetails.email;
+        } else {
+          throw { code: 'auth/user-not-found' };
+        }
+      } else {
+        // Handle invalid input format
+        throw { code: 'auth/invalid-email' };
+      }
+      
+      if (!emailToLogin) {
+          throw { code: 'auth/user-not-found' };
+      }
+
+      // 3. Authenticate with Firebase Auth using the resolved email
       const userCredential = await signInWithEmailAndPassword(
         auth,
-        username,
+        emailToLogin,
         password
       );
 
       const user = userCredential.user;
 
-      // 2. Fetch User Data and Role from Firestore
-      const userDocRef = doc(db, "users", user.uid);
-      const userDoc = await getDoc(userDocRef);
-      
-      if (userDoc.exists()) {
-        const userData = userDoc.data();
-        let userRole = userData.role || 'finder';
-        
-        // Admin check: Only assign 'admin' role if the checkbox is checked AND they are an admin in Firestore
-        if (isAdmin && userData.role === 'admin') {
-           userRole = 'admin'; 
-        } else if (isAdmin && userData.role !== 'admin') {
-           toast.warning('Admin login failed', { description: 'You do not have administrative privileges.' });
+      // 4. Fetch User Data and Role (if not already fetched)
+      if (!userDetails) {
+        const userDocRef = doc(db, "users", user.uid);
+        const userDoc = await getDoc(userDocRef);
+        if (userDoc.exists()) {
+            userDetails = userDoc.data();
         }
+      }
+      
+      if (userDetails) {
+        // Role is read directly from Firestore, no need for isAdmin toggle
+        const userRole = userDetails.role || 'finder';
         
-        // 3. Set the current user in AppContext
+        // 5. Set the current user in AppContext
         const appUser = {
             id: user.uid,
-            fullName: userData.fullName || 'User',
-            studentId: userData.studentId || '',
-            contactNumber: userData.contactNumber || '',
+            fullName: userDetails.fullName || 'User',
+            studentId: userDetails.studentId || '',
+            contactNumber: userDetails.contactNumber || '',
             email: user.email!,
             role: userRole as 'finder' | 'claimer' | 'admin'
         }
@@ -80,9 +108,7 @@ export const LoginPage = () => {
         setCurrentPage(appUser.role === 'admin' ? 'admin' : 'board');
         setLoginAttempts(0); 
         
-        toast.success('Login successful!', {
-            description: `Welcome back, ${appUser.fullName}!`
-        });
+        toast.success(`Welcome back, ${appUser.fullName}!`); 
 
       } else {
           setError('User profile data missing. Please contact support.');
@@ -90,7 +116,7 @@ export const LoginPage = () => {
       }
 
     } catch (error: any) {
-      // 4. Handle invalid credentials and lockouts
+      // 6. Handle Errors 
       let errorMessage = 'Login failed. Please check your credentials.';
       
       if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
@@ -145,7 +171,7 @@ export const LoginPage = () => {
               <Input
                 id="username"
                 type="text"
-                placeholder="Enter your email or student ID"
+                placeholder="Enter your email or student ID (e.g., 23-3314)"
                 value={username}
                 onChange={(e) => {
                   setUsername(e.target.value);
@@ -184,23 +210,11 @@ export const LoginPage = () => {
               </div>
             </div>
 
-            <div className="flex items-center space-x-2 pt-1">
-              <input
-                type="checkbox"
-                id="admin"
-                checked={isAdmin}
-                onChange={(e) => setIsAdmin(e.target.checked)}
-                className="w-4 h-4 rounded border-2 border-border text-accent focus:ring-2 focus:ring-accent cursor-pointer"
-                disabled={isLocked || isLoading}
-              />
-              <Label htmlFor="admin" className="cursor-pointer">
-                Login as Guard/Admin
-              </Label>
-            </div>
+            {/* REMOVED: Admin checkbox */}
 
             <Button 
               type="submit" 
-              className="w-full h-12 bg-accent text-accent-foreground hover:bg-accent/90 shadow-md transition-all hover:shadow-lg mt-6"
+              className="w-full h-12 bg-accent text-white hover:bg-accent/90 shadow-md transition-all hover:shadow-lg mt-6"
               disabled={isLocked || isLoading}
             >
               {isLoading ? 'Signing in...' : 'Sign In'}

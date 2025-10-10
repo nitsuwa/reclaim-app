@@ -43,7 +43,7 @@ export const RegisterPage = () => {
     if (!formData.studentId.trim()) {
       newErrors.studentId = 'Student ID is required';
     } else if (!/^\d{2}-\d{4}$/.test(formData.studentId)) { // <-- Student ID REGEX: XX-XXXX
-      newErrors.studentId = 'Invalid format. Use: 20-0123';
+      newErrors.studentId = 'Invalid format. Use: 23-1234';
     }
 
     if (!formData.contactNumber.trim()) {
@@ -102,9 +102,7 @@ export const RegisterPage = () => {
 
     // Mock: On successful form validation, pretend to send OTP and move to step 2
     setTimeout(() => {
-      toast.success('OTP sent successfully!', {
-        description: `Verification code sent to ${formData.email}`
-      });
+      toast.success(`OTP sent successfully to ${formData.email}!`); 
       setStep(2); // Go to the mock OTP step
       setIsLoading(false);
     }, 1000);
@@ -178,9 +176,7 @@ export const RegisterPage = () => {
   const handleResendOTP = () => {
     setIsLoading(true);
     setTimeout(() => {
-      toast.success('OTP resent!', {
-        description: `New code sent to ${formData.email}`
-      });
+      toast.success(`OTP resent successfully to ${formData.email}!`); 
       setIsLoading(false);
     }, 1000);
   };
@@ -290,7 +286,7 @@ export const RegisterPage = () => {
                 <Input
                   id="studentId"
                   type="text"
-                  placeholder="20-0123" // <-- FIXED PLACEHOLDER
+                  placeholder="23-1234" // <-- FIXED PLACEHOLDER
                   value={formData.studentId}
                   onChange={(e) => {
                     setFormData({...formData, studentId: e.target.value});
