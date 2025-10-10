@@ -10,6 +10,11 @@ import { PLVLogo } from './PLVLogo';
 import { toast } from 'sonner@2.0.3';
 import { Alert, AlertDescription } from './ui/alert';
 import { Progress } from './ui/progress';
+// --- ADDED/UNCOMMENTED FIREBASE IMPORTS ---
+import { auth, db } from '../firebase'; 
+import { createUserWithEmailAndPassword } from 'firebase/auth'; 
+import { doc, setDoc } from 'firebase/firestore'; 
+// ------------------------------------------
 
 export const RegisterPage = () => {
   const { setCurrentPage } = useApp();
@@ -37,8 +42,8 @@ export const RegisterPage = () => {
 
     if (!formData.studentId.trim()) {
       newErrors.studentId = 'Student ID is required';
-    } else if (!/^\d{4}-\d{5}-[A-Z]{2}-\d$/.test(formData.studentId)) {
-      newErrors.studentId = 'Invalid format. Use: 2021-00123-VL-0';
+    } else if (!/^\d{2}-\d{4}$/.test(formData.studentId)) { // <-- Student ID REGEX: XX-XXXX
+      newErrors.studentId = 'Invalid format. Use: 20-0123';
     }
 
     if (!formData.contactNumber.trim()) {
@@ -83,6 +88,7 @@ export const RegisterPage = () => {
     return { strength, label: 'Strong', color: 'bg-green-500' };
   };
 
+  // 1. MOCK SUBMIT (Validates form, moves to OTP step 2)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -92,17 +98,19 @@ export const RegisterPage = () => {
     }
 
     setIsLoading(true);
+    setErrors({});
 
-    // Simulate API call
+    // Mock: On successful form validation, pretend to send OTP and move to step 2
     setTimeout(() => {
       toast.success('OTP sent successfully!', {
         description: `Verification code sent to ${formData.email}`
       });
-      setStep(2);
+      setStep(2); // Go to the mock OTP step
       setIsLoading(false);
     }, 1000);
   };
-
+  
+  // 2. REAL SUBMIT (Performs Firebase registration AFTER mock OTP is "verified")
   const handleOTPSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -113,21 +121,59 @@ export const RegisterPage = () => {
 
     setIsLoading(true);
 
-    // Simulate OTP verification
-    setTimeout(() => {
-      const validOTP = '123456'; // Mock OTP
-      
-      if (otp === validOTP) {
-        toast.success('Account created successfully!');
-        setStep(3);
-      } else {
+    // --- MOCK OTP VALIDATION ---
+    const validOTP = '123456'; 
+    if (otp !== validOTP) {
         toast.error('Invalid OTP', {
-          description: 'Please check the code and try again'
+            description: 'Please check the code and try again'
         });
-      }
-      setIsLoading(false);
-    }, 1000);
+        setIsLoading(false);
+        return; 
+    }
+    
+    // --- REAL FIREBASE REGISTRATION ---
+    const defaultRole = 'finder' as const;
+
+    try {
+        // Create User in Firebase Authentication
+        const userCredential = await createUserWithEmailAndPassword(
+            auth,
+            formData.email,
+            formData.password
+        );
+
+        const user = userCredential.user;
+
+        // Store additional user data in Firestore
+        await setDoc(doc(db, "users", user.uid), {
+            fullName: formData.fullName,
+            studentId: formData.studentId,
+            contactNumber: formData.contactNumber,
+            email: formData.email,
+            role: defaultRole,
+            createdAt: new Date().toISOString()
+        });
+
+        // Success: Moves to the success screen
+        toast.success('Account created successfully!');
+        setStep(3); 
+
+    } catch (error: any) {
+        let errorMessage = 'Registration failed. Please contact support.';
+        if (error.code === 'auth/email-already-in-use') {
+            errorMessage = 'This email is already registered. Go back to login.';
+        } else {
+            console.error("Firebase Registration Error:", error);
+        }
+        
+        toast.error('Registration Failed', { description: errorMessage });
+        setStep(1); // Force user back to step 1 to restart 
+        
+    } finally {
+        setIsLoading(false);
+    }
   };
+
 
   const handleResendOTP = () => {
     setIsLoading(true);
@@ -138,7 +184,7 @@ export const RegisterPage = () => {
       setIsLoading(false);
     }, 1000);
   };
-
+  
   const passwordStrength = getPasswordStrength();
 
   if (step === 3) {
@@ -244,7 +290,7 @@ export const RegisterPage = () => {
                 <Input
                   id="studentId"
                   type="text"
-                  placeholder="2021-00123-VL-0"
+                  placeholder="20-0123" // <-- FIXED PLACEHOLDER
                   value={formData.studentId}
                   onChange={(e) => {
                     setFormData({...formData, studentId: e.target.value});

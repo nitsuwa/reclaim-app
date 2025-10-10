@@ -8,6 +8,10 @@ import { Eye, EyeOff, AlertCircle } from 'lucide-react';
 import { PLVLogo } from './PLVLogo';
 import { toast } from 'sonner@2.0.3';
 import { Alert, AlertDescription } from './ui/alert';
+import { auth } from '../firebase'; 
+import { db } from '../firebase'; 
+import { signInWithEmailAndPassword } from 'firebase/auth'; 
+import { doc, getDoc } from 'firebase/firestore'; 
 
 export const LoginPage = () => {
   const { setCurrentUser, setCurrentPage } = useApp();
@@ -20,6 +24,8 @@ export const LoginPage = () => {
   const [isLocked, setIsLocked] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
+// src/components/LoginPage.tsx (Replace the existing handleLogin function)
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -29,7 +35,6 @@ export const LoginPage = () => {
       return;
     }
 
-    // Validate inputs
     if (!username.trim() || !password.trim()) {
       setError('Please fill in all fields');
       return;
@@ -37,43 +42,77 @@ export const LoginPage = () => {
 
     setIsLoading(true);
 
-    // Simulate API call
-    setTimeout(() => {
-      // Mock validation - in real app, validate against backend
-      const validCredentials = password.length >= 6; // Simple mock validation
+    try {
+      // 1. Authenticate with Firebase Auth
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
+        username,
+        password
+      );
 
-      if (!validCredentials) {
-        const newAttempts = loginAttempts + 1;
-        setLoginAttempts(newAttempts);
+      const user = userCredential.user;
+
+      // 2. Fetch User Data and Role from Firestore
+      const userDocRef = doc(db, "users", user.uid);
+      const userDoc = await getDoc(userDocRef);
+      
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        let userRole = userData.role || 'finder';
         
-        if (newAttempts >= 3) {
-          setIsLocked(true);
-          setError('Account locked due to too many failed attempts. Please reset your password.');
-        } else {
-          setError(`Invalid credentials. ${3 - newAttempts} attempts remaining.`);
+        // Admin check: Only assign 'admin' role if the checkbox is checked AND they are an admin in Firestore
+        if (isAdmin && userData.role === 'admin') {
+           userRole = 'admin'; 
+        } else if (isAdmin && userData.role !== 'admin') {
+           toast.warning('Admin login failed', { description: 'You do not have administrative privileges.' });
         }
-        setIsLoading(false);
-        return;
+        
+        // 3. Set the current user in AppContext
+        const appUser = {
+            id: user.uid,
+            fullName: userData.fullName || 'User',
+            studentId: userData.studentId || '',
+            contactNumber: userData.contactNumber || '',
+            email: user.email!,
+            role: userRole as 'finder' | 'claimer' | 'admin'
+        }
+        setCurrentUser(appUser);
+        setCurrentPage(appUser.role === 'admin' ? 'admin' : 'board');
+        setLoginAttempts(0); 
+        
+        toast.success('Login successful!', {
+            description: `Welcome back, ${appUser.fullName}!`
+        });
+
+      } else {
+          setError('User profile data missing. Please contact support.');
+          await auth.signOut();
       }
 
-      // Successful login
-      const mockUser = {
-        id: '1',
-        fullName: isAdmin ? 'Admin Guard' : 'Juan Dela Cruz',
-        studentId: isAdmin ? 'GUARD001' : '2021-00123-VL-0',
-        contactNumber: '09123456789',
-        email: username,
-        role: isAdmin ? 'admin' as const : 'finder' as const
-      };
+    } catch (error: any) {
+      // 4. Handle invalid credentials and lockouts
+      let errorMessage = 'Login failed. Please check your credentials.';
       
-      toast.success('Login successful!', {
-        description: `Welcome back, ${mockUser.fullName}!`
-      });
-
-      setCurrentUser(mockUser);
-      setCurrentPage(isAdmin ? 'admin' : 'board');
+      if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+          
+          const newAttempts = loginAttempts + 1;
+          setLoginAttempts(newAttempts);
+          
+          if (newAttempts >= 3) {
+            setIsLocked(true);
+            errorMessage = 'Account locked due to too many failed attempts. Please reset your password.';
+          } else {
+            errorMessage = `Invalid email or password. ${3 - newAttempts} attempts remaining.`;
+          }
+      } else {
+          console.error("Firebase Login Error:", error);
+      }
+      
+      setError(errorMessage);
+    
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   };
 
   return (
